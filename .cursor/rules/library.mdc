@@ -1,0 +1,15 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+
+# project framework limit
+
+- For the code implementation, prioritize using the libraries specified in the @package.json file of this project. You must implement using the specific version defined in the @package.json.
+- Prioritize using the mantine ui components implement react components
+- Don't add too much typescirpt type definition in react components, only add if needed.Besides always place type definition into the relavant @types.ts file
+- You must refer to the existing React component implementations in the project to implement the new React component
+- Prefer use mantine hooks to define state in react components 
+- Must use mantine form if there are relavant to form fileds;
+- 

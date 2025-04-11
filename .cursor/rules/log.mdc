@@ -1,0 +1,8 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# log priciples
+
+- always log with a prefix of '@@' for example console.log('@@ key',value)
