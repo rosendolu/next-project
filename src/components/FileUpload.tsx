@@ -1,7 +1,7 @@
 import { Group, Paper, Stack, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconDownload, IconUpload, IconX } from '@tabler/icons-react';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
 const MAX_VIDEO_SIZE = 100 * 1024 * 1024; // 100MB
@@ -9,13 +9,33 @@ const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/web
 const ACCEPTED_VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/ogg'];
 
 interface FileUploadProps {
-    onFileSelect: (files: File[]) => void;
+    onFilesChange: (files: File[]) => void;
+    pasteContainer?: HTMLElement;
 }
 
-export default function FileUpload({ onFileSelect }: FileUploadProps) {
+export default function FileUpload({ onFilesChange, pasteContainer }: FileUploadProps) {
     const [isDragging, setIsDragging] = useState(false);
     const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
     const inputRef = useRef<HTMLInputElement>(null);
+
+    // Handle window paste event
+    useEffect(() => {
+        const handleWindowPaste = async (e: ClipboardEvent) => {
+            console.log('@@ handling window paste', e);
+            const target = e.target as Node;
+            if (pasteContainer && !pasteContainer.contains(target)) {
+                return;
+            }
+            if (e.clipboardData?.files.length) {
+                handleFiles(Array.from(e.clipboardData.files));
+            }
+        };
+
+        window.addEventListener('paste', handleWindowPaste);
+        return () => {
+            window.removeEventListener('paste', handleWindowPaste);
+        };
+    }, []);
 
     const validateFiles = (files: File[]) => {
         console.log('@@ validating files', files);
@@ -68,10 +88,10 @@ export default function FileUpload({ onFileSelect }: FileUploadProps) {
             const validFiles = validateFiles(files);
             if (validFiles.length > 0) {
                 setSelectedFiles(prev => [...prev, ...validFiles]);
-                onFileSelect(validFiles);
+                onFilesChange(validFiles);
             }
         },
-        [onFileSelect]
+        [onFilesChange]
     );
 
     const handleDragEnter = (e: React.DragEvent) => {
@@ -89,20 +109,67 @@ export default function FileUpload({ onFileSelect }: FileUploadProps) {
     };
 
     const handleDragOver = (e: React.DragEvent) => {
-        // console.log('@@ handling drag over', e);
         e.preventDefault();
         e.stopPropagation();
         setIsDragging(true);
     };
 
-    const handleDrop = (e: React.DragEvent) => {
+    const getFileNameFromUrl = (url: string): string => {
+        console.log('@@ getting filename from url', url);
+        try {
+            // Parse the URL
+            const urlObj = new URL(url);
+
+            // Check if it's a Next.js image URL
+            //  "http://localhost:3000/_next/image?url=%2F1.jpg&w=2“
+            if (urlObj.pathname.includes('/_next/image')) {
+                // Get the original image path from the 'url' query parameter
+                const originalPath = urlObj.searchParams.get('url');
+                if (originalPath) {
+                    // Decode the URL-encoded path and get the last segment
+                    const decodedPath = decodeURIComponent(originalPath);
+                    return decodedPath.split('/').pop() || 'image.jpg';
+                }
+            }
+
+            // For direct image URLs, just get the last segment of the pathname
+            const fileName = urlObj.pathname.split('/').pop();
+            return fileName || 'image.jpg';
+        } catch (error) {
+            console.error('@@ Error parsing URL:', error);
+            return 'image.jpg';
+        }
+    };
+    const handleDrop = async (e: React.DragEvent) => {
         console.log('@@ handling drop', e);
         e.preventDefault();
         e.stopPropagation();
         setIsDragging(false);
 
-        if (e.dataTransfer.files) {
-            handleFiles(Array.from(e.dataTransfer.files));
+        const items = Array.from(e.dataTransfer.items);
+        const files: File[] = [];
+
+        // Handle both direct file drops and URL/HTML drops
+        for (const item of items) {
+            if (item.kind === 'file') {
+                const file = item.getAsFile();
+                if (file) files.push(file);
+            } else if (item.type === 'text/uri-list') {
+                try {
+                    const url = await new Promise<string>(resolve => item.getAsString(resolve));
+                    console.log('@@ handling uri-list', url);
+                    const response = await fetch(url);
+                    const blob = await response.blob();
+                    const fileName = getFileNameFromUrl(url);
+                    files.push(new File([blob], fileName, { type: blob.type }));
+                } catch (error) {
+                    console.error('@@ Error handling uri-list:', error);
+                }
+            }
+        }
+
+        if (files.length > 0) {
+            handleFiles(files);
         }
     };
 
@@ -145,7 +212,6 @@ export default function FileUpload({ onFileSelect }: FileUploadProps) {
                 onDragLeave={handleDragLeave}
                 onDragOver={handleDragOver}
                 onDrop={handleDrop}
-                onPaste={handlePaste}
                 onClick={() => inputRef.current?.click()}>
                 <input
                     ref={inputRef}
@@ -165,10 +231,10 @@ export default function FileUpload({ onFileSelect }: FileUploadProps) {
                 </Group>
 
                 <Text ta="center" mt="md">
-                    Drag files here or click to select files
+                    Paste or Drag files here or click to select files
                 </Text>
                 <Text ta="center" size="sm" c="dimmed">
-                    Images up to 10MB, Videos up to 100MB
+                    Images up to 5MB, Videos up to 100MB
                 </Text>
             </Paper>
 
